@@ -13,18 +13,25 @@ const REFRESH_COOKIE = 'refreshToken';
 const LOCK_DURATION_MS = 15 * 60 * 1000;
 const MAX_FAILED_ATTEMPTS = 5;
 
+const cookieOptions = () => {
+  const isProd = env.nodeEnv === 'production';
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+    path: '/',
+  };
+};
+
 const setRefreshCookie = (res, token) => {
   res.cookie(REFRESH_COOKIE, token, {
-    httpOnly: true,
-    secure: env.nodeEnv === 'production',
-    sameSite: 'strict',
+    ...cookieOptions(),
     maxAge: 30 * 24 * 60 * 60 * 1000,
-    path: '/api/v1/auth',
   });
 };
 
 const clearRefreshCookie = (res) => {
-  res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+  res.clearCookie(REFRESH_COOKIE, cookieOptions());
 };
 
 export const register = async (req, res, next) => {
@@ -199,18 +206,10 @@ export const refresh = async (req, res, next) => {
     const newAccess = generateAccessToken(user._id);
     const newRefresh = generateRefreshToken(user._id);
 
-    // Atomic update: remove the old token and add the new one in a single op
+    await User.updateOne({ _id: user._id }, { $pull: { refreshTokens: { token } } });
     await User.updateOne(
       { _id: user._id },
-      {
-        $pull: { refreshTokens: { token } },
-      }
-    );
-    await User.updateOne(
-      { _id: user._id },
-      {
-        $push: { refreshTokens: { token: newRefresh } },
-      }
+      { $push: { refreshTokens: { token: newRefresh } } }
     );
 
     setRefreshCookie(res, newRefresh);

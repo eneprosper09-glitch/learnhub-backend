@@ -18,12 +18,19 @@ app.use(requestId);
 app.use(
   helmet({
     contentSecurityPolicy: env.nodeEnv === 'production' ? undefined : false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
 
+const allowedOrigins = [env.corsOrigin, 'http://localhost:5174'].filter(Boolean);
+
 app.use(
   cors({
-    origin: env.corsOrigin,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error(`Not allowed by CORS: ${origin}`), false);
+    },
     credentials: true,
   })
 );
