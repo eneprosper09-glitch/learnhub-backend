@@ -8,6 +8,7 @@ import lessonRoutes from './lessonRoutes.js';
 import enrollmentRoutes from './enrollmentRoutes.js';
 import progressRoutes from './progressRoutes.js';
 import uploadRoutes from './uploadRoutes.js';
+import { runSeed } from '../controllers/seedController.js';
 
 const router = Router();
 
@@ -19,6 +20,8 @@ router.get('/health', (req, res) => {
     ts: Date.now(),
   });
 });
+
+router.post('/seed', runSeed);
 
 router.use('/auth', authRoutes);
 router.use('/admin', adminRoutes);
