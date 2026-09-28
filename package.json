@@ -11,5 +11,31 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
     "lint": "eslint src"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@sentry/node": "^11.0.0",
+    "bcryptjs": "^3.0.3",
+    "cloudinary": "^2.11.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.4",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "express-validator": "^7.3.2",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.10.2",
+    "morgan": "^1.12.1",
+    "multer": "^2.4.0",
+    "resend": "^6.30.0",
+    "slugify": "^1.6.9",
+    "uuid": "^14.0.2"
+  },
+  "devDependencies": {
+    "eslint": "^10.11.0",
+    "jest": "^30.5.2",
+    "mongodb-memory-server": "^11.3.0",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.3.0"
+  }
 }
