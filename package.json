@@ -1,0 +1,15 @@
+{
+  "name": "learnhub-backend",
+  "version": "1.0.0",
+  "description": "LearnHub backend - Learning Management System",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "node src/seed.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
+    "lint": "eslint src"
+  },
+  "license": "MIT"
+}
