@@ -28,4 +28,6 @@ export const env = {
   emailFrom: process.env.EMAIL_FROM || 'oneprosper09@gmail.com',
   sentryDsn: process.env.SENTRY_DSN,
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5174',
+  frontendUrl:
+    process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'http://localhost:5174',
 };

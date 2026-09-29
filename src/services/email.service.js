@@ -38,7 +38,7 @@ const send = async ({ to, subject, html }) => {
 };
 
 export const sendVerificationEmail = async (to, name, token) => {
-  const url = `${env.corsOrigin}/verify-email?token=${token}`;
+  const url = `${env.frontendUrl}/verify-email?token=${token}`;
   await send({
     to,
     subject: 'Verify your LearnHub account',
@@ -52,7 +52,7 @@ export const sendVerificationEmail = async (to, name, token) => {
 };
 
 export const sendPasswordResetEmail = async (to, name, token) => {
-  const url = `${env.corsOrigin}/reset-password?token=${token}`;
+  const url = `${env.frontendUrl}/reset-password?token=${token}`;
   await send({
     to,
     subject: 'Reset your LearnHub password',
@@ -66,7 +66,7 @@ export const sendPasswordResetEmail = async (to, name, token) => {
 };
 
 export const sendAdminInvitationEmail = async (to, invitedByName, token) => {
-  const url = `${env.corsOrigin}/admin-invite?token=${token}`;
+  const url = `${env.frontendUrl}/admin-invite?token=${token}`;
   await send({
     to,
     subject: 'You are invited to become an Admin on LearnHub',
