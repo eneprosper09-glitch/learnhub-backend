@@ -42,6 +42,11 @@ const userSchema = new mongoose.Schema(
     isInstructorApproved: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
+
+    // Streak tracking
+    currentStreak: { type: Number, default: 0 },
+    longestStreak: { type: Number, default: 0 },
+    lastActivityDate: { type: Date, default: null },
   },
   { timestamps: true }
 );
@@ -55,6 +60,5 @@ userSchema.pre('save', async function () {
 userSchema.methods.matchPassword = function (entered) {
   return bcrypt.compare(entered, this.password);
 };
-
 
 export default mongoose.model('User', userSchema);

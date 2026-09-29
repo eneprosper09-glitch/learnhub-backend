@@ -7,17 +7,14 @@ import { ownsCourse } from '../middleware/ownership.js';
 import { validate } from '../middleware/validate.js';
 import { createCourseRules, updateCourseRules } from '../validators/course.validator.js';
 import { createLessonRules } from '../validators/lesson.validator.js';
+import { getRecommendedCourses } from '../controllers/recommendationController.js';
 
 const router = express.Router();
 
 router.get('/', c.getCourses);
+router.get('/recommended', protect, getRecommendedCourses);
 
-router.get(
-  '/admin/all',
-  protect,
-  authorize('admin'),
-  c.getAllCoursesAdmin
-);
+router.get('/admin/all', protect, authorize('admin'), c.getAllCoursesAdmin);
 
 router.get(
   '/instructor/mine',

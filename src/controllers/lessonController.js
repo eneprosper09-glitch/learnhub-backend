@@ -25,13 +25,19 @@ const recalcProgress = async (courseId) => {
 export const createLesson = async (req, res, next) => {
   try {
     const course = req.course;
-    const { title, description, videoUrl, videoPublicId, duration, isFree } = req.body;
+    const { title, description, videoUrl, videoPublicId, duration, isFree, section } = req.body;
 
-    const last = await Lesson.findOne({ course: course._id, isDeleted: false }).sort('-order');
+    const sectionFilter = section ? { section } : { section: null };
+    const last = await Lesson.findOne({
+      course: course._id,
+      isDeleted: false,
+      ...sectionFilter,
+    }).sort('-order');
     const order = last ? last.order + 1 : 1;
 
     const lesson = await Lesson.create({
       course: course._id,
+      section: section || null,
       title,
       description,
       videoUrl,
@@ -81,7 +87,15 @@ export const updateLesson = async (req, res, next) => {
       await deleteAsset(lesson.videoPublicId, 'video');
     }
 
-    const allowed = ['title', 'description', 'videoUrl', 'videoPublicId', 'duration', 'isFree'];
+    const allowed = [
+      'title',
+      'description',
+      'videoUrl',
+      'videoPublicId',
+      'duration',
+      'isFree',
+      'section',
+    ];
     allowed.forEach((f) => {
       if (req.body[f] !== undefined) lesson[f] = req.body[f];
     });
@@ -124,7 +138,11 @@ export const deleteLesson = async (req, res, next) => {
     lesson.isDeleted = true;
     await lesson.save();
 
-    const remaining = await Lesson.find({ course: lesson.course, isDeleted: false }).sort('order');
+    const remaining = await Lesson.find({
+      course: lesson.course,
+      isDeleted: false,
+      section: lesson.section || null,
+    }).sort('order');
     for (let i = 0; i < remaining.length; i++) {
       remaining[i].order = i + 1;
       await remaining[i].save();
@@ -133,6 +151,110 @@ export const deleteLesson = async (req, res, next) => {
     await recalcProgress(lesson.course);
 
     res.json({ success: true, message: 'Lesson deleted' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const bulkDeleteLessons = async (req, res, next) => {
+  try {
+    const { lessonIds } = req.body;
+    if (!Array.isArray(lessonIds) || lessonIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_FAILED',
+        message: 'lessonIds must be a non-empty array',
+        requestId: req.id,
+      });
+    }
+
+    const lessons = await Lesson.find({ _id: { $in: lessonIds }, isDeleted: false });
+    if (lessons.length === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'No matching lessons',
+        requestId: req.id,
+      });
+    }
+
+    if (req.user.role !== 'admin') {
+      const courseIds = [...new Set(lessons.map((l) => String(l.course)))];
+      for (const cid of courseIds) {
+        const course = await Course.findById(cid);
+        if (!course || String(course.instructor) !== String(req.user._id)) {
+          return res.status(403).json({
+            success: false,
+            code: 'FORBIDDEN',
+            message: 'You do not own one or more of these lessons',
+            requestId: req.id,
+          });
+        }
+      }
+    }
+
+    for (const lesson of lessons) {
+      if (lesson.videoPublicId) {
+        await deleteAsset(lesson.videoPublicId, 'video');
+      }
+      lesson.isDeleted = true;
+      await lesson.save();
+    }
+
+    const affectedCourses = [...new Set(lessons.map((l) => String(l.course)))];
+    for (const cid of affectedCourses) {
+      await recalcProgress(cid);
+    }
+
+    res.json({ success: true, message: `Deleted ${lessons.length} lessons` });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const bulkMoveLessons = async (req, res, next) => {
+  try {
+    const { lessonIds, sectionId } = req.body;
+    if (!Array.isArray(lessonIds) || lessonIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        code: 'VALIDATION_FAILED',
+        message: 'lessonIds must be a non-empty array',
+        requestId: req.id,
+      });
+    }
+
+    const lessons = await Lesson.find({ _id: { $in: lessonIds }, isDeleted: false });
+    if (lessons.length === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 'NOT_FOUND',
+        message: 'No matching lessons',
+        requestId: req.id,
+      });
+    }
+
+    if (req.user.role !== 'admin') {
+      const courseIds = [...new Set(lessons.map((l) => String(l.course)))];
+      for (const cid of courseIds) {
+        const course = await Course.findById(cid);
+        if (!course || String(course.instructor) !== String(req.user._id)) {
+          return res.status(403).json({
+            success: false,
+            code: 'FORBIDDEN',
+            message: 'You do not own one or more of these lessons',
+            requestId: req.id,
+          });
+        }
+      }
+    }
+
+    await Lesson.updateMany(
+      { _id: { $in: lessonIds } },
+      { section: sectionId || null }
+    );
+
+    res.json({ success: true, message: 'Lessons moved' });
   } catch (err) {
     next(err);
   }

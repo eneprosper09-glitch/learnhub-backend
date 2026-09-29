@@ -11,9 +11,25 @@ const upload = multer({
   limits: { fileSize: 500 * 1024 * 1024 },
 });
 
-router.use(protect, authorize('instructor', 'admin'), uploadLimiter);
+// Avatar can be uploaded by any logged-in user (student, instructor, admin)
+router.post('/avatar', protect, uploadLimiter, upload.single('file'), c.uploadAvatar);
 
-router.post('/thumbnail', upload.single('file'), c.uploadThumbnail);
-router.post('/video', upload.single('file'), c.uploadLessonVideo);
+// Thumbnails and videos are only for instructors and admins
+router.post(
+  '/thumbnail',
+  protect,
+  authorize('instructor', 'admin'),
+  uploadLimiter,
+  upload.single('file'),
+  c.uploadThumbnail
+);
+router.post(
+  '/video',
+  protect,
+  authorize('instructor', 'admin'),
+  uploadLimiter,
+  upload.single('file'),
+  c.uploadLessonVideo
+);
 
 export default router;

@@ -1,21 +1,45 @@
 import Course from '../models/Course.js';
 import Lesson from '../models/Lesson.js';
+import Section from '../models/Section.js';
 import Enrollment from '../models/Enrollment.js';
 import { toSlug } from '../utils/slugify.js';
 import { deleteAsset } from '../services/cloudinary.service.js';
 
 export const getCourses = async (req, res, next) => {
   try {
-    const { search, category, level, sort = '-createdAt', page = 1, limit = 12 } = req.query;
+    const {
+      search,
+      category,
+      level,
+      sort = '-createdAt',
+      page = 1,
+      limit = 12,
+      minPrice,
+      maxPrice,
+      hasDiscount,
+      instructorId,
+    } = req.query;
     const query = { isPublished: true, isDeleted: false };
 
     if (category) query.category = category;
     if (level) query.level = level;
+    if (instructorId) query.instructor = instructorId;
+    if (hasDiscount === 'true') query.discountPercent = { $gt: 0 };
+    if (minPrice || maxPrice) {
+      query.price = {};
+      if (minPrice) query.price.$gte = Number(minPrice);
+      if (maxPrice) query.price.$lte = Number(maxPrice);
+    }
 
     const parsedLimit = Math.min(Number(limit) || 12, 100);
     const skip = (Number(page) - 1) * parsedLimit;
 
-    if (search) query.$text = { $search: search };
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+      ];
+    }
 
     const [data, total] = await Promise.all([
       Course.find(query)
@@ -27,13 +51,25 @@ export const getCourses = async (req, res, next) => {
       Course.countDocuments(query),
     ]);
 
+    const withPrices = data.map((c) => {
+      const obj = c.toObject({ virtuals: true });
+      return {
+        ...obj,
+        discountedPrice:
+          obj.discountPercent > 0
+            ? Math.round((obj.price - (obj.price * obj.discountPercent) / 100) * 100) / 100
+            : obj.price,
+        hasDiscount: obj.discountPercent > 0,
+      };
+    });
+
     res.json({
       success: true,
-      count: data.length,
+      count: withPrices.length,
       total,
       page: Number(page),
       pages: Math.ceil(total / parsedLimit) || 1,
-      data,
+      data: withPrices,
     });
   } catch (err) {
     next(err);
@@ -55,7 +91,10 @@ export const getCourse = async (req, res, next) => {
       });
     }
 
-    const lessons = await Lesson.find({ course: course._id, isDeleted: false }).sort('order');
+    const [lessons, sections] = await Promise.all([
+      Lesson.find({ course: course._id, isDeleted: false }).sort('order'),
+      Section.find({ course: course._id, isDeleted: false }).sort('order'),
+    ]);
 
     let enrolled = false;
     let previouslyEnrolled = false;
@@ -75,8 +114,7 @@ export const getCourse = async (req, res, next) => {
 
     const isOwner =
       req.user &&
-      (req.user.role === 'admin' ||
-        String(course.instructor._id) === String(req.user._id));
+      (req.user.role === 'admin' || String(course.instructor._id) === String(req.user._id));
 
     const safeLessons = lessons.map((l) => {
       const showVideo = l.isFree || enrolled || isOwner;
@@ -86,20 +124,50 @@ export const getCourse = async (req, res, next) => {
         description: l.description,
         duration: l.duration,
         order: l.order,
+        section: l.section,
         isFree: l.isFree,
         videoUrl: showVideo ? l.videoUrl : undefined,
         locked: !showVideo,
       };
     });
 
+    // Group lessons by section
+    const groupedSections = sections.map((s) => ({
+      _id: s._id,
+      title: s.title,
+      description: s.description,
+      order: s.order,
+      lessons: safeLessons.filter((l) => String(l.section) === String(s._id)),
+    }));
+
+    const orphans = safeLessons.filter((l) => !l.section);
+    if (orphans.length > 0) {
+      groupedSections.unshift({
+        _id: 'default',
+        title: 'Course content',
+        description: '',
+        order: 0,
+        lessons: orphans,
+      });
+    }
+
+    const obj = course.toObject({ virtuals: true });
+    const discountedPrice =
+      obj.discountPercent > 0
+        ? Math.round((obj.price - (obj.price * obj.discountPercent) / 100) * 100) / 100
+        : obj.price;
+
     res.json({
       success: true,
       data: {
-        ...course.toObject(),
+        ...obj,
         lessons: safeLessons,
+        sections: groupedSections,
         enrolled,
         previouslyEnrolled,
         previouslyPaid,
+        discountedPrice,
+        hasDiscount: obj.discountPercent > 0,
       },
     });
   } catch (err) {
@@ -114,6 +182,7 @@ export const createCourse = async (req, res, next) => {
       description,
       category,
       price,
+      discountPercent,
       level,
       language,
       thumbnailUrl,
@@ -140,6 +209,7 @@ export const createCourse = async (req, res, next) => {
       category: category || undefined,
       instructor: req.user._id,
       price: price || 0,
+      discountPercent: discountPercent || 0,
       level: level || 'beginner',
       language: language || 'English',
       thumbnailUrl,
@@ -156,7 +226,6 @@ export const updateCourse = async (req, res, next) => {
   try {
     const course = req.course;
 
-    // If the thumbnail changed, delete the old asset.
     if (
       req.body.thumbnailPublicId &&
       course.thumbnailPublicId &&
@@ -170,6 +239,7 @@ export const updateCourse = async (req, res, next) => {
       'description',
       'category',
       'price',
+      'discountPercent',
       'level',
       'language',
       'thumbnailUrl',
@@ -192,7 +262,6 @@ export const deleteCourse = async (req, res, next) => {
   try {
     const course = req.course;
 
-    // Delete all lesson videos from Cloudinary.
     const lessons = await Lesson.find({ course: course._id, isDeleted: false });
     for (const lesson of lessons) {
       if (lesson.videoPublicId) {
@@ -200,7 +269,6 @@ export const deleteCourse = async (req, res, next) => {
       }
     }
 
-    // Delete the course thumbnail.
     if (course.thumbnailPublicId) {
       await deleteAsset(course.thumbnailPublicId, 'image');
     }
@@ -208,6 +276,7 @@ export const deleteCourse = async (req, res, next) => {
     course.isDeleted = true;
     await course.save();
     await Lesson.updateMany({ course: course._id }, { isDeleted: true });
+    await Section.updateMany({ course: course._id }, { isDeleted: true });
 
     res.json({ success: true, message: 'Course deleted' });
   } catch (err) {

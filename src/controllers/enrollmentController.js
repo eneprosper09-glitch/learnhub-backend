@@ -2,6 +2,46 @@ import Enrollment from '../models/Enrollment.js';
 import Course from '../models/Course.js';
 import Lesson from '../models/Lesson.js';
 import Progress from '../models/Progress.js';
+import User from '../models/User.js';
+import Notification from '../models/Notification.js';
+
+const calculateFinalPrice = (course) => {
+  const price = Number(course.price) || 0;
+  const discount = Number(course.discountPercent) || 0;
+  if (discount <= 0) return price;
+  return Math.round((price - (price * discount) / 100) * 100) / 100;
+};
+
+const updateStreak = async (userId) => {
+  const user = await User.findById(userId);
+  if (!user) return;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const last = user.lastActivityDate ? new Date(user.lastActivityDate) : null;
+  if (last) last.setHours(0, 0, 0, 0);
+
+  if (!last) {
+    user.currentStreak = 1;
+    user.longestStreak = Math.max(user.longestStreak || 0, 1);
+  } else {
+    const dayMs = 24 * 60 * 60 * 1000;
+    const diff = Math.round((today - last) / dayMs);
+    if (diff === 0) {
+      // same day
+    } else if (diff === 1) {
+      user.currentStreak = (user.currentStreak || 0) + 1;
+      if (user.currentStreak > (user.longestStreak || 0)) {
+        user.longestStreak = user.currentStreak;
+      }
+    } else {
+      user.currentStreak = 1;
+    }
+  }
+  user.lastActivityDate = new Date();
+  await user.save();
+};
 
 export const enrollInCourse = async (req, res, next) => {
   try {
@@ -43,7 +83,7 @@ export const enrollInCourse = async (req, res, next) => {
       return res.json({ success: true, data: existing });
     }
 
-    const price = Number(course.price) || 0;
+    const finalPrice = calculateFinalPrice(course);
 
     if (existing && existing.status === 'unenrolled' && existing.paid) {
       existing.status = 'active';
@@ -53,14 +93,14 @@ export const enrollInCourse = async (req, res, next) => {
       return res.json({ success: true, data: existing });
     }
 
-    if (price > 0) {
+    if (finalPrice > 0) {
       const providedAmount = Number(req.body?.amount) || 0;
-      if (req.body?.paid !== true || providedAmount < price) {
+      if (req.body?.paid !== true || providedAmount < finalPrice) {
         return res.status(402).json({
           success: false,
           code: 'PAYMENT_REQUIRED',
-          message: `This course costs $${price}. Complete payment to enroll.`,
-          amount: price,
+          message: `This course costs $${finalPrice}. Complete payment to enroll.`,
+          amount: finalPrice,
           requestId: req.id,
         });
       }
@@ -78,12 +118,12 @@ export const enrollInCourse = async (req, res, next) => {
       existing.totalLessons = totalLessons;
       existing.courseSnapshot = {
         title: course.title,
-        price: course.price,
+        price: finalPrice,
         thumbnailUrl: course.thumbnailUrl,
       };
-      if (price > 0) {
+      if (finalPrice > 0) {
         existing.paid = true;
-        existing.paidAmount = price;
+        existing.paidAmount = finalPrice;
         existing.paidAt = new Date();
       }
       await existing.save();
@@ -95,16 +135,25 @@ export const enrollInCourse = async (req, res, next) => {
         totalLessons,
         courseSnapshot: {
           title: course.title,
-          price: course.price,
+          price: finalPrice,
           thumbnailUrl: course.thumbnailUrl,
         },
-        paid: price > 0,
-        paidAmount: price > 0 ? price : 0,
-        paidAt: price > 0 ? new Date() : undefined,
+        paid: finalPrice > 0,
+        paidAmount: finalPrice > 0 ? finalPrice : 0,
+        paidAt: finalPrice > 0 ? new Date() : undefined,
       });
     }
 
     await Course.findByIdAndUpdate(courseId, { $inc: { totalStudents: 1 } });
+
+    // Notify instructor of new enrollment
+    await Notification.create({
+      user: course.instructor,
+      type: 'enrollment',
+      title: 'New enrollment',
+      body: `${req.user.name} enrolled in "${course.title}"`,
+      link: `/instructor/courses/${course._id}/students`,
+    });
 
     res.status(201).json({ success: true, data: enrollment });
   } catch (err) {
@@ -151,14 +200,13 @@ export const getMyEnrollments = async (req, res, next) => {
       student: req.user._id,
       status: 'active',
     })
-      .populate('course', 'title slug thumbnailUrl instructor totalLessons price')
+      .populate(
+        'course',
+        'title slug thumbnailUrl instructor totalLessons price discountPercent'
+      )
       .sort('-createdAt');
 
-    res.json({
-      success: true,
-      count: enrollments.length,
-      data: enrollments,
-    });
+    res.json({ success: true, count: enrollments.length, data: enrollments });
   } catch (err) {
     next(err);
   }
@@ -222,6 +270,7 @@ export const markLessonComplete = async (req, res, next) => {
         course: lesson.course,
         lesson: lesson._id,
       });
+      await updateStreak(req.user._id);
     }
 
     const totalLessons = await Lesson.countDocuments({
@@ -239,13 +288,21 @@ export const markLessonComplete = async (req, res, next) => {
     enrollment.progressPercent = pct;
     await enrollment.save();
 
+    // Notify certificate available when just reached 100%
+    if (pct === 100) {
+      const course = await Course.findById(lesson.course);
+      await Notification.create({
+        user: req.user._id,
+        type: 'certificate',
+        title: 'Certificate unlocked',
+        body: `You completed "${course?.title}". Your certificate is ready.`,
+        link: `/certificates/${lesson.course}`,
+      });
+    }
+
     res.json({
       success: true,
-      data: {
-        progressPercent: pct,
-        completedCount: completed,
-        totalLessons,
-      },
+      data: { progressPercent: pct, completedCount: completed, totalLessons },
     });
   } catch (err) {
     next(err);
@@ -255,7 +312,6 @@ export const markLessonComplete = async (req, res, next) => {
 export const getMyProgress = async (req, res, next) => {
   try {
     const courseId = req.params.courseId;
-
     const enrollment = await Enrollment.findOne({
       student: req.user._id,
       course: courseId,
@@ -287,6 +343,24 @@ export const getMyProgress = async (req, res, next) => {
           isFree: l.isFree,
           completed: completedIds.has(String(l._id)),
         })),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getMyStreak = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id).select(
+      'currentStreak longestStreak lastActivityDate'
+    );
+    res.json({
+      success: true,
+      data: {
+        currentStreak: user?.currentStreak || 0,
+        longestStreak: user?.longestStreak || 0,
+        lastActivityDate: user?.lastActivityDate || null,
       },
     });
   } catch (err) {

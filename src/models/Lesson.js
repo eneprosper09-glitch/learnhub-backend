@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 const lessonSchema = new mongoose.Schema(
   {
     course: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', required: true },
+    section: { type: mongoose.Schema.Types.ObjectId, ref: 'Section', default: null },
     title: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
     videoUrl: { type: String, required: true },
@@ -16,6 +17,7 @@ const lessonSchema = new mongoose.Schema(
 );
 
 lessonSchema.index({ course: 1, order: 1 });
+lessonSchema.index({ section: 1, order: 1 });
 lessonSchema.index({ isDeleted: 1 });
 
 export default mongoose.model('Lesson', lessonSchema);

@@ -1,5 +1,9 @@
 node_modules/
+coverage/
 .env
-*.log
-coverage/.env.test
 .env.test
+.env.local
+.env.production
+.env.development
+*.log
+!.env.example
