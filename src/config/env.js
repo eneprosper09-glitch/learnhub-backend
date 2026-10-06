@@ -23,6 +23,11 @@ export const env = {
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET,
   },
+  livekit: {
+    url: process.env.LIVEKIT_URL,
+    apiKey: process.env.LIVEKIT_API_KEY,
+    apiSecret: process.env.LIVEKIT_API_SECRET,
+  },
   brevoApiKey: process.env.BREVO_API_KEY,
   resendApiKey: process.env.RESEND_API_KEY,
   emailFrom: process.env.EMAIL_FROM || 'oneprosper09@gmail.com',

@@ -16,12 +16,19 @@ import noteRoutes from './noteRoutes.js';
 import bookmarkRoutes from './bookmarkRoutes.js';
 import questionRoutes from './questionRoutes.js';
 import notificationRoutes from './notificationRoutes.js';
+import conversationRoutes from './conversationRoutes.js';
+import callRoutes from './callRoutes.js';
 import { runSeed } from '../controllers/seedController.js';
 
 const router = Router();
 
 router.get('/health', (req, res) => {
-  res.json({ success: true, status: 'ok', uptime: process.uptime(), ts: Date.now() });
+  res.json({
+    success: true,
+    status: 'ok',
+    uptime: process.uptime(),
+    ts: Date.now(),
+  });
 });
 
 router.post('/seed', runSeed);
@@ -42,5 +49,7 @@ router.use('/notes', noteRoutes);
 router.use('/bookmarks', bookmarkRoutes);
 router.use('/questions', questionRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/conversations', conversationRoutes);
+router.use('/calls', callRoutes);
 
 export default router;

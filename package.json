@@ -24,11 +24,13 @@
     "express-validator": "^7.3.2",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
+    "livekit-server-sdk": "^2.19.1",
     "mongoose": "^9.10.2",
     "morgan": "^1.12.1",
     "multer": "^2.4.0",
     "resend": "^6.30.0",
     "slugify": "^1.6.9",
+    "socket.io": "^4.8.4",
     "uuid": "^14.0.2"
   },
   "devDependencies": {
