@@ -45,6 +45,17 @@ const updateStreak = async (userId) => {
 
 export const enrollInCourse = async (req, res, next) => {
   try {
+    // Instructors cannot enroll in any course. Admins can (they moderate and
+    // may need to test the student flow). This is the load-bearing rule.
+    if (req.user.role === 'instructor') {
+      return res.status(403).json({
+        success: false,
+        code: 'INSTRUCTORS_CANNOT_ENROLL',
+        message: 'Instructor accounts cannot enroll in courses.',
+        requestId: req.id,
+      });
+    }
+
     if (!req.user.isEmailVerified) {
       return res.status(403).json({
         success: false,
@@ -61,6 +72,18 @@ export const enrollInCourse = async (req, res, next) => {
         success: false,
         code: 'COURSE_NOT_FOUND',
         message: 'Course not found',
+        requestId: req.id,
+      });
+    }
+
+    // Belt and suspenders: even if an admin somehow tried to enroll in a
+    // course they instruct, block it. Normally the instructor check above
+    // catches this, but admins are excluded from that check.
+    if (String(course.instructor) === String(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        code: 'CANNOT_ENROLL_OWN_COURSE',
+        message: 'You cannot enroll in your own course.',
         requestId: req.id,
       });
     }
@@ -232,6 +255,19 @@ export const markLessonComplete = async (req, res, next) => {
     if (!enrollment) {
       const course = await Course.findById(lesson.course);
       const isOwner = course && String(course.instructor) === String(req.user._id);
+
+      // Instructors can mark lessons complete in their own courses (for
+      // previewing), but not in other instructors' courses. Admins can do
+      // either. Everyone else needs an enrollment.
+      if (req.user.role === 'instructor' && !isOwner) {
+        return res.status(403).json({
+          success: false,
+          code: 'LESSON_LOCKED',
+          message: 'Instructor accounts cannot track progress in other instructors\' courses.',
+          requestId: req.id,
+        });
+      }
+
       if (req.user.role === 'admin' || isOwner) {
         const totalLessons = await Lesson.countDocuments({
           course: lesson.course,
